@@ -1,0 +1,14 @@
+# your data — never commit it
+*.db
+*.db-*
+photos/
+data/
+# secrets
+*.env
+.env
+!.env.example
+# python
+.venv/
+venv/
+__pycache__/
+*.pyc

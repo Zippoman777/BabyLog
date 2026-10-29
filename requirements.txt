@@ -1,0 +1,5 @@
+Flask>=3.0
+gunicorn>=21.2
+# Optional: only needed if you use a local MaxMind GeoLite2 DB for geo-blocking
+# (not needed when geo-blocking via Cloudflare's CF-IPCountry header).
+# geoip2>=4.8

@@ -1,0 +1,10 @@
+services:
+  babylog:
+    build: .
+    container_name: babylog
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"   # put nginx/Caddy with HTTPS in front; use "8000:8000" for LAN-only use
+    env_file: .env
+    volumes:
+      - ./data:/data            # babylog.db + photos/ — back this folder up
