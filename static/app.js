@@ -103,6 +103,9 @@ function readDateTime(fallback) {
     const [h, m] = tv.value.split(':').map(Number)
     at.setHours(h, m, 0, 0)
   }
+  // Logging after midnight: "20:38" with today's date would land in the future —
+  // the parent means last night, so move it back a day.
+  if (at.getTime() > Date.now() + 5 * 60000 && dv && dv.value === dateInputVal(new Date())) at.setDate(at.getDate() - 1)
   return at
 }
 const fmtDateLong = (d) =>
