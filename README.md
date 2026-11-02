@@ -23,6 +23,8 @@ one SQLite file holds everything.
 - **Stats:** 7 / 14 / 30-day feed and sleep averages, feed interval and length, feeds-per-day chart,
   weight trend.
 - **Moments:** milestone photos (stored as files next to the database).
+- **English, Русский, Magyar** — picked automatically from the phone's language, switchable under
+  Baby → Language (also translates the sign-in page). New languages: add a dictionary to `static/i18n.js`.
 - Baby profile with live age and a girl/boy colour theme; multiple babies.
 - Auto-refresh, so a partner's entries appear on your phone within seconds.
 - JSON export.

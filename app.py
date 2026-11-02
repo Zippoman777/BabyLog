@@ -240,24 +240,49 @@ def security_headers(resp):
 
 
 # ---------------------------------------------------------------- login
-LOGIN_HTML = """<!doctype html><html lang="en"><head>
+# Sign-in page texts. The app's language picker sets the babylog_lang cookie;
+# before that the browser's Accept-Language decides.
+LOGIN_TEXT = {
+    "en": {"title": "Sign in", "prompt": "Enter the access password.", "password": "Password",
+           "button": "Sign in", "locked": "Too many attempts. Try again in a few minutes.",
+           "wrong": "Wrong password."},
+    "ru": {"title": "Вход", "prompt": "Введите пароль доступа.", "password": "Пароль",
+           "button": "Войти", "locked": "Слишком много попыток. Попробуйте через несколько минут.",
+           "wrong": "Неверный пароль."},
+    "hu": {"title": "Bejelentkezés", "prompt": "Add meg a hozzáférési jelszót.", "password": "Jelszó",
+           "button": "Belépés", "locked": "Túl sok próbálkozás. Próbáld újra néhány perc múlva.",
+           "wrong": "Hibás jelszó."},
+}
+
+
+def ui_lang():
+    lang = request.cookies.get("babylog_lang", "")
+    if lang in LOGIN_TEXT:
+        return lang
+    best = request.accept_languages.best_match(list(LOGIN_TEXT))
+    return best or "en"
+
+
+LOGIN_HTML = """<!doctype html><html lang="{{ lang }}"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" href="/static/styles.css"><title>BabyLog · Sign in</title></head>
+<link rel="stylesheet" href="/static/styles.css"><title>BabyLog · {{ tx.title }}</title></head>
 <body><div class="app"><div class="center-screen">
 <div style="font-size:48px;margin-bottom:8px">👶</div>
 <h1>BabyLog</h1>
-<p>Enter the access password.</p>
+<p>{{ tx.prompt }}</p>
 <form method="post" style="width:100%;max-width:320px">
-  <div class="field"><label>Password</label>
+  <div class="field"><label>{{ tx.password }}</label>
   <input type="password" name="password" autofocus autocomplete="current-password"
          style="width:100%;border:.5px solid var(--accent-soft);border-radius:10px;padding:11px 12px;font-size:16px"></div>
   {% if error %}<p style="color:var(--danger);font-size:13px;margin:0 0 10px">{{ error }}</p>{% endif %}
-  <button class="btn block" type="submit">Sign in</button>
+  <button class="btn block" type="submit">{{ tx.button }}</button>
 </form></div></div></body></html>"""
 
 
 def render_login(error="", status=200):
-    return render_template_string(LOGIN_HTML, error=error), status
+    lang = ui_lang()
+    tx = LOGIN_TEXT[lang]
+    return render_template_string(LOGIN_HTML, error=tx.get(error, ""), tx=tx, lang=lang), status
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -267,7 +292,7 @@ def login():
     ip = client_ip()
     if request.method == "POST":
         if login_locked(ip):
-            return render_login("Too many attempts. Try again in a few minutes.", 429)
+            return render_login("locked", 429)
         if password_ok(request.form.get("password", "")):
             session.clear()
             session["auth"] = True
@@ -282,7 +307,7 @@ def login():
             )
             return resp
         record_login_fail(ip)
-        return render_login("Wrong password.", 401)
+        return render_login("wrong", 401)
     if session.get("auth"):
         return redirect("/")
     return render_login()

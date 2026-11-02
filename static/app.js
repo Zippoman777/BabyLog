@@ -19,7 +19,7 @@ async function api(path, opts = {}) {
     throw new Error('unauthorized')
   }
   if (res.status === 403) throw new Error('forbidden')
-  if (res.status === 429) throw new Error('too many requests — slow down')
+  if (res.status === 429) throw new Error(t('too many requests — slow down'))
   if (!res.ok) throw new Error('request failed: ' + res.status)
   return res.json()
 }
@@ -80,7 +80,7 @@ function fmtDuration(sec) {
 function fmtDurationShort(sec) {
   const h = Math.floor(sec / 3600)
   const m = Math.round((sec % 3600) / 60)
-  return h > 0 ? `${h}h ${m}m` : `${m}m`
+  return h > 0 ? `${h}${uh()} ${m}${um()}` : `${m}${um()}`
 }
 const fmtTime = (iso) => {
   const d = new Date(iso)
@@ -90,8 +90,8 @@ const dateInputVal = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d
 // A date + time pair of inputs; reused by every log sheet so any entry can be
 // backdated. Reads back via readDateTime().
 const dateTimeFields = (d) => `<div class="row" style="gap:10px">
-    <div class="field" style="flex:1.3"><label>Date</label><input id="f-date" type="date" value="${dateInputVal(d)}"></div>
-    <div class="field" style="flex:1"><label>Time</label><input id="f-time" type="time" value="${pad(d.getHours())}:${pad(d.getMinutes())}"></div>
+    <div class="field" style="flex:1.3"><label>${t('Date')}</label><input id="f-date" type="date" value="${dateInputVal(d)}"></div>
+    <div class="field" style="flex:1"><label>${t('Time')}</label><input id="f-time" type="time" value="${pad(d.getHours())}:${pad(d.getMinutes())}"></div>
   </div>`
 // Builds a Date from the sheet's date + time inputs (falls back to today/now).
 function readDateTime(fallback) {
@@ -106,8 +106,8 @@ function readDateTime(fallback) {
   return at
 }
 const fmtDateLong = (d) =>
-  d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
-const fmtMonth = (d) => d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+  d.toLocaleDateString(LOCALE, { weekday: 'long', month: 'short', day: 'numeric' })
+const fmtMonth = (d) => d.toLocaleDateString(LOCALE, { month: 'long', year: 'numeric' })
 const dayKey = (iso) => {
   const d = typeof iso === 'string' ? new Date(iso) : iso
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
@@ -118,21 +118,12 @@ function addDays(d, n) {
   r.setDate(r.getDate() + n)
   return r
 }
-function babyAge(birthISO, atMsVal) {
+function babyAge(birthISO, atMsVal, withOld = true) {
   const birth = new Date(birthISO)
   const ms = (atMsVal == null ? Date.now() : atMsVal) - birth.getTime()
-  if (ms < 0) return 'not born yet'
+  if (ms < 0) return t('not born yet')
   const days = Math.floor(ms / 86400000)
-  if (days < 1) {
-    const h = Math.floor(ms / 3600000)
-    return h <= 1 ? 'newborn' : `${h} hours old`
-  }
-  const w = Math.floor(days / 7)
-  const rd = days % 7
-  const parts = []
-  if (w > 0) parts.push(`${w} week${w > 1 ? 's' : ''}`)
-  parts.push(`${rd} day${rd === 1 ? '' : 's'}`)
-  return parts.join(', ') + ' old'
+  return ageWords(days, Math.floor(ms / 3600000), withOld)
 }
 const celsiusFmt = (c) => c.toFixed(1) + '°C'
 const kgFmt = (g) => (g / 1000).toFixed(2) + ' kg'
@@ -141,7 +132,8 @@ const lengthCm = (e) => num(e.note)
 const cmFmt = (cm) => (Math.round(cm * 10) / 10).toFixed(1) + ' cm'
 // Accept both comma and dot as the decimal separator (locale-friendly).
 const num = (s) => parseFloat(String(s == null ? '' : s).replace(',', '.'))
-const sideLabel = (s) => (s === 'L' ? 'left' : s === 'R' ? 'right' : s === 'back' ? 'back' : s === 'both' ? 'both' : s)
+const sideLabel = (s) => (s === 'L' ? t('left') : s === 'R' ? t('right') : s === 'back' ? t('back') : s === 'both' ? t('both') : s)
+const sideShort = (s) => (s === 'both' ? t('L+R') : s === 'L' ? t('L') : s === 'R' ? t('R') : s)
 const elapsed = (iso) => Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000))
 // Sort by the real instant, not the ISO string — events are stored in mixed
 // formats (UTC "Z" for quick logs, local "+hh:mm" for timers), so text compare
@@ -193,11 +185,11 @@ function milestoneData(e) {
   try {
     o = JSON.parse(e.note)
   } catch {
-    return { title: e.note || 'Milestone', text: '', media: [] }
+    return { title: e.note || t('Milestone'), text: '', media: [] }
   }
   let media = Array.isArray(o.media) ? o.media.filter((m) => m && m.id && m.kind === 'photo') : []
   if (!media.length && o.photo) media = [{ kind: 'photo', id: o.photo }]
-  return { title: o.title || 'Milestone', text: o.text || '', media }
+  return { title: o.title || t('Milestone'), text: o.text || '', media }
 }
 const PHOTO_URL = (id) => '/api/photos/' + encodeURIComponent(id)
 async function deleteMediaFiles(media) {
@@ -208,15 +200,15 @@ const medName = (e) => (e.note || '').split(' · ')[0]
 
 function eventLabel(e) {
   switch (e.type) {
-    case 'breast': return `Breastfed ${e.side === 'both' ? 'L+R' : e.side} · ${fmtDurationShort(e.durationSec)}`
-    case 'bottle': return `Bottle · ${e.ml} ml`
-    case 'sleep': return `Slept · ${fmtDurationShort(e.durationSec)}${e.side ? ' · ' + sideLabel(e.side) : ''}`
-    case 'pee': return 'Pee'
-    case 'poo': return 'Poo'
-    case 'temp': return `Temp · ${celsiusFmt(e.celsius)}`
-    case 'weight': return `Weight · ${kgFmt(e.grams)}`
-    case 'length': return `Length · ${cmFmt(lengthCm(e))}`
-    case 'bath': return 'Bath'
+    case 'breast': return t('Breastfed {side} · {dur}', { side: sideShort(e.side), dur: fmtDurationShort(e.durationSec) })
+    case 'bottle': return t('Bottle · {ml} ml', { ml: e.ml })
+    case 'sleep': return t('Slept · {dur}', { dur: fmtDurationShort(e.durationSec) }) + (e.side ? ' · ' + sideLabel(e.side) : '')
+    case 'pee': return t('Pee')
+    case 'poo': return t('Poo')
+    case 'temp': return t('Temp · {v}', { v: celsiusFmt(e.celsius) })
+    case 'weight': return t('Weight · {v}', { v: kgFmt(e.grams) })
+    case 'length': return t('Length · {v}', { v: cmFmt(lengthCm(e)) })
+    case 'bath': return t('Bath')
     case 'med': return esc(e.note)
     case 'milestone': return esc(milestoneData(e).title)
     case 'note': return esc(e.note)
@@ -226,9 +218,9 @@ function eventLabel(e) {
 /* ------------------------------------------------------------ feed timing */
 function fmtAgo(ms) {
   const m = Math.floor(ms / 60000)
-  if (m < 1) return '<1m'
+  if (m < 1) return '<1' + um()
   const h = Math.floor(m / 60)
-  return h ? `${h}h ${m % 60}m` : `${m}m`
+  return h ? `${h}${uh()} ${m % 60}${um()}` : `${m}${um()}`
 }
 /* ------------------------------------------------------------ night mode */
 // Auto: dim theme from 21:00 to 07:00. Per-device preference (auto|on|off).
@@ -287,7 +279,7 @@ function render() {
   if (meta) meta.setAttribute('content', night ? '#1A1416' : b && b.sex === 'boy' ? '#E6F1FB' : '#FBEAF0')
 
   if (!state.loaded) {
-    root().innerHTML = `<div class="center-screen"><p>Loading…</p></div>`
+    root().innerHTML = `<div class="center-screen"><p>${t('Loading…')}</p></div>`
     return
   }
   if (!b) {
@@ -320,11 +312,11 @@ function render() {
 
   root().innerHTML = `<div class="app">${switcher}${screen}
     <nav class="nav">
-      ${navBtn('home', 'home', 'Home')}
-      ${navBtn('calendar', 'calendar', 'Calendar')}
-      ${navBtn('chart-bar', 'stats', 'Stats')}
-      ${navBtn('star', 'milestones', 'Moments')}
-      ${navBtn('settings', 'settings', 'Baby')}
+      ${navBtn('home', 'home', t('Home'))}
+      ${navBtn('calendar', 'calendar', t('Calendar'))}
+      ${navBtn('chart-bar', 'stats', t('Stats'))}
+      ${navBtn('star', 'milestones', t('Moments'))}
+      ${navBtn('settings', 'settings', t('Baby'))}
     </nav>
   </div>${state.sheet ? sheetHTML(state.sheet) : ''}${state.babyForm ? babyFormOverlay() : ''}${state.sessionDetail ? sessionDetailHTML() : ''}${state.msDetail ? msDetailHTML() : ''}${
     state.mediaView ? mediaViewerHTML() : ''
@@ -337,19 +329,19 @@ function sessionDetailHTML() {
     .filter(Boolean)
     .sort((a, c) => atMs(a) - atMs(c))
   return `<div class="overlay" data-action="close-detail"><div class="sheet" data-stop="1">
-    <h3>Entries</h3>
+    <h3>${t('Entries')}</h3>
     <div>${events
       .map(
         (e) => `<div class="logrow">
         <div><span style="margin-right:8px">${eventIcon(e)}</span>${eventLabel(e)}<div class="meta">${fmtTime(e.atISO)}</div></div>
         <div style="display:flex;gap:6px;align-items:center">
-          <button class="btn ghost small" data-action="edit-event" data-id="${e.id}">Edit</button>
-          <button class="del" data-action="del-event" data-id="${e.id}" aria-label="Delete">${ICON.trash}</button>
+          <button class="btn ghost small" data-action="edit-event" data-id="${e.id}">${t('Edit')}</button>
+          <button class="del" data-action="del-event" data-id="${e.id}" aria-label="${t('Delete')}">${ICON.trash}</button>
         </div>
       </div>`
       )
       .join('')}</div>
-    <div class="sheet-actions"><button class="btn" data-action="close-detail">Close</button></div>
+    <div class="sheet-actions"><button class="btn" data-action="close-detail">${t('Close')}</button></div>
   </div></div>`
 }
 
@@ -360,8 +352,8 @@ const navBtn = (icon, tab, label) =>
 function onboardingHTML() {
   return `<div class="app"><div class="center-screen">
     <div style="font-size:48px;margin-bottom:8px">${ICON.baby}</div>
-    <h1>Welcome to BabyLog</h1>
-    <p>Add your baby to start tracking feeds, sleep and more.</p>
+    <h1>${t('Welcome to BabyLog')}</h1>
+    <p>${t('Add your baby to start tracking feeds, sleep and more.')}</p>
     <div style="width:100%;max-width:360px;text-align:left">${babyFormFields()}</div>
   </div></div>`
 }
@@ -381,16 +373,16 @@ function homeHTML(b) {
   const lastSideMatches = (kind) =>
     lastBreast && (lastBreast.side === 'both' || lastBreast.side === (kind === 'breast-L' ? 'L' : 'R'))
 
-  const timerTile = (kind, label, t) => `
-    <button class="tile timer-tile ${t ? 'running' : ''} ${!t && lastSideMatches(kind) ? 'last-used' : ''}" data-action="toggle" data-kind="${kind}">
-      ${!t && lastSideMatches(kind) ? '<span class="badge-last">last used</span>' : ''}
+  const timerTile = (kind, label, t2) => `
+    <button class="tile timer-tile ${t2 ? 'running' : ''} ${!t2 && lastSideMatches(kind) ? 'last-used' : ''}" data-action="toggle" data-kind="${kind}">
+      ${!t2 && lastSideMatches(kind) ? `<span class="badge-last">${t('last used')}</span>` : ''}
       <p class="label">${label}</p>
-      <p class="value js-elapsed" ${t ? `data-start="${t.startISO}"` : ''}>${fmtDuration(t ? elapsed(t.startISO) : 0)}</p>
-      <p class="hint">${t ? ICON.stop + ' tap to stop' : ICON.play + ' tap to start'}</p>
+      <p class="value js-elapsed" ${t2 ? `data-start="${t2.startISO}"` : ''}>${fmtDuration(t2 ? elapsed(t2.startISO) : 0)}</p>
+      <p class="hint">${t2 ? ICON.stop + ' ' + t('tap to stop') : ICON.play + ' ' + t('tap to start')}</p>
     </button>`
 
   const lastBreastLine = lastBreast
-    ? `<p style="margin:8px 0 0;font-size:12px;color:var(--text-dim)">Last feed: ${sideLabel(lastBreast.side)} at ${fmtTime(lastBreast.atISO)} · <b class="js-since" data-since="${lastBreast.atISO}">${fmtAgo(Date.now() - atMs(lastBreast))}</b> ago</p>`
+    ? `<p style="margin:8px 0 0;font-size:12px;color:var(--text-dim)">${t('Last feed: {side} at {time} · {ago} ago', { side: sideLabel(lastBreast.side), time: fmtTime(lastBreast.atISO), ago: `<b class="js-since" data-since="${lastBreast.atISO}">${fmtAgo(Date.now() - atMs(lastBreast))}</b>` })}</p>`
     : ''
 
   // Most recent sleep, to show the last sleeping position.
@@ -401,7 +393,7 @@ function homeHTML(b) {
   let lastSleepLine = ''
   if (lastSleep && !tS) {
     const wokeISO = lastSleep.endISO || new Date(atMs(lastSleep) + (lastSleep.durationSec || 0) * 1000).toISOString()
-    lastSleepLine = `<p style="margin:8px 0 0;font-size:12px;color:var(--text-dim)">Last slept: ${lastSleep.side ? sideLabel(lastSleep.side) + ' ' : ''}at ${fmtTime(lastSleep.atISO)} · woke ${fmtTime(wokeISO)} · awake <b class="js-since" data-since="${wokeISO}">${fmtAgo(Date.now() - new Date(wokeISO).getTime())}</b></p>`
+    lastSleepLine = `<p style="margin:8px 0 0;font-size:12px;color:var(--text-dim)">${t('Last slept: {side}at {time} · woke {woke} · awake {awake}', { side: lastSleep.side ? sideLabel(lastSleep.side) + ' ' : '', time: fmtTime(lastSleep.atISO), woke: fmtTime(wokeISO), awake: `<b class="js-since" data-since="${wokeISO}">${fmtAgo(Date.now() - new Date(wokeISO).getTime())}</b>` })}</p>`
   }
 
   const sideBtn = (val, txt) =>
@@ -424,7 +416,7 @@ function homeHTML(b) {
     return `<div style="display:flex;justify-content:space-between;align-items:center;font-size:13px">
       <span>${label}</span>
       <span style="font-weight:600">${
-        last ? `<span class="js-since" data-since="${last.atISO}">${fmtAgo(Date.now() - atMs(last))}</span> ago · ${n} today` : '—'
+        last ? t('{ago} ago · {n} today', { ago: `<span class="js-since" data-since="${last.atISO}">${fmtAgo(Date.now() - atMs(last))}</span>`, n }) : '—'
       }</span>
     </div>`
   }
@@ -435,25 +427,25 @@ function homeHTML(b) {
   if (lastBath) {
     const next = addDays(startOfDay(new Date(lastBath.atISO)), 3)
     bathDue = startOfDay(new Date()).getTime() >= next.getTime()
-    bathText = bathDue ? 'Bath due today' : 'Next bath ' + next.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    bathText = bathDue ? t('Bath due today') : t('Next bath {date}', { date: next.toLocaleDateString(LOCALE, { month: 'short', day: 'numeric' }) })
   } else {
     bathDue = true
-    bathText = 'Bath due today'
+    bathText = t('Bath due today')
   }
   const infoCard = `<div class="tile" style="margin-bottom:14px;display:flex;flex-direction:column;gap:10px">
     <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px">
-      <span>${ICON.scale} Last weight</span>
-      <span style="font-weight:600">${lastWeight ? kgFmt(lastWeight.grams) + ' · ' + new Date(lastWeight.atISO).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—'}</span>
+      <span>${ICON.scale} ${t('Last weight')}</span>
+      <span style="font-weight:600">${lastWeight ? kgFmt(lastWeight.grams) + ' · ' + new Date(lastWeight.atISO).toLocaleDateString(LOCALE, { month: 'short', day: 'numeric' }) : '—'}</span>
     </div>
-    ${diaperRow('pee', ICON.droplet + ' Last pee')}
-    ${diaperRow('poo', ICON.poo + ' Last poo')}
+    ${diaperRow('pee', ICON.droplet + ' ' + t('Last pee'))}
+    ${diaperRow('poo', ICON.poo + ' ' + t('Last poo'))}
     <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px">
-      <span>${ICON.length} Last length</span>
-      <span style="font-weight:600">${lastLength ? cmFmt(lengthCm(lastLength)) + ' · ' + new Date(lastLength.atISO).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—'}</span>
+      <span>${ICON.length} ${t('Last length')}</span>
+      <span style="font-weight:600">${lastLength ? cmFmt(lengthCm(lastLength)) + ' · ' + new Date(lastLength.atISO).toLocaleDateString(LOCALE, { month: 'short', day: 'numeric' }) : '—'}</span>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px">
       <span class="${bathDue ? 'bath-due' : ''}">🛁 ${bathText}</span>
-      <button class="btn small ${bathDue ? '' : 'ghost'}" data-action="log-bath">Bath done</button>
+      <button class="btn small ${bathDue ? '' : 'ghost'}" data-action="log-bath">${t('Bath done')}</button>
     </div>
   </div>`
 
@@ -461,14 +453,14 @@ function homeHTML(b) {
   const sched = medicines().filter((m) => m.perDay > 0)
   const medCard = sched.length
     ? `<div class="tile" style="margin-bottom:14px">
-      <p class="feed-lbl">💊 Today's medicine</p>
+      <p class="feed-lbl">💊 ${t("Today's medicine")}</p>
       ${sched
         .map((m) => {
           const n = todays.filter((e) => e.type === 'med' && medName(e) === m.name).length
           const done = n >= m.perDay
           return `<div class="med-row">
             <span>${esc(m.name)} <span class="meta" style="display:inline">${n}/${m.perDay}</span></span>
-            ${done ? '<span>✅</span>' : `<button class="btn small" data-action="give-med" data-name="${esc(m.name)}">Give</button>`}
+            ${done ? '<span>✅</span>' : `<button class="btn small" data-action="give-med" data-name="${esc(m.name)}">${t('Give')}</button>`}
           </div>`
         })
         .join('')}
@@ -484,42 +476,42 @@ function homeHTML(b) {
     ${medCard}
     ${infoCard}
 
-    <p class="section-label">${ICON.milk} Breastfeeding</p>
-    <div class="row">${timerTile('breast-L', 'Left', tL)}${timerTile('breast-R', 'Right', tR)}</div>
+    <p class="section-label">${ICON.milk} ${t('Breastfeeding')}</p>
+    <div class="row">${timerTile('breast-L', t('Left'), tL)}${timerTile('breast-R', t('Right'), tR)}</div>
     ${lastBreastLine}
 
     <div class="tile" style="margin-top:14px">
       <div class="sleep-tile" style="margin-top:0">
         <div>
-          <p class="label" style="margin:0;font-size:13px">${ICON.moon} Sleep</p>
+          <p class="label" style="margin:0;font-size:13px">${ICON.moon} ${t('Sleep')}</p>
           <p class="value js-elapsed" ${tS ? `data-start="${tS.startISO}"` : ''}>${fmtDuration(tS ? elapsed(tS.startISO) : 0)}</p>
         </div>
         <div style="display:flex;gap:8px">
-          ${tS ? `<button class="btn ghost small" data-action="cancel-sleep">Cancel</button>` : ''}
-          <button class="btn small" data-action="toggle" data-kind="sleep">${tS ? 'Stop' : 'Start'}</button>
+          ${tS ? `<button class="btn ghost small" data-action="cancel-sleep">${t('Cancel')}</button>` : ''}
+          <button class="btn small" data-action="toggle" data-kind="sleep">${tS ? t('Stop') : t('Start')}</button>
         </div>
       </div>
-      <p class="label" style="margin:12px 0 6px;font-size:12px">Sleeping position</p>
-      <div class="seg-pick">${sideBtn('back', 'On back')}${sideBtn('L', 'Left')}${sideBtn('R', 'Right')}</div>
+      <p class="label" style="margin:12px 0 6px;font-size:12px">${t('Sleeping position')}</p>
+      <div class="seg-pick">${sideBtn('back', t('On back'))}${sideBtn('L', t('Left'))}${sideBtn('R', t('Right'))}</div>
       ${lastSleepLine}
     </div>
 
-    <button class="btn block" data-action="sheet" data-type="checkin" style="margin:14px 0"><span>📋</span> Quick check-in</button>
+    <button class="btn block" data-action="sheet" data-type="checkin" style="margin:14px 0"><span>📋</span> ${t('Quick check-in')}</button>
 
-    <div class="quick-row" style="margin-top:0">${quick('bottle', 'bottle', 'Bottle')}${quick('pee', 'droplet', 'Pee')}${quick('poo', 'poo', 'Poo')}</div>
-    <div class="quick-row" style="margin-top:0">${quick('temp', 'temperature', 'Temp')}${quick('weight', 'scale', 'Weight')}${quick('length', 'length', 'Length')}${quick('note', 'note', 'Note')}</div>
-    <button class="btn block" data-action="sheet" data-type="med" style="margin-top:12px">💊 Medicine</button>
+    <div class="quick-row" style="margin-top:0">${quick('bottle', 'bottle', t('Bottle'))}${quick('pee', 'droplet', t('Pee'))}${quick('poo', 'poo', t('Poo'))}</div>
+    <div class="quick-row" style="margin-top:0">${quick('temp', 'temperature', t('Temp'))}${quick('weight', 'scale', t('Weight'))}${quick('length', 'length', t('Length'))}${quick('note', 'note', t('Note'))}</div>
+    <button class="btn block" data-action="sheet" data-type="med" style="margin-top:12px">💊 ${t('Medicine')}</button>
 
-    <p class="section-label" style="margin-top:8px">${ICON.list} Today's log</p>
+    <p class="section-label" style="margin-top:8px">${ICON.list} ${t("Today's log")}</p>
     ${
       todays.length === 0
-        ? `<p class="empty">Nothing logged yet today.</p>`
+        ? `<p class="empty">${t('Nothing logged yet today.')}</p>`
         : `<div class="tile" style="padding:4px 14px">${todays
             .map(
               (e) => `<div class="logrow">
         <div><div><span style="margin-right:8px">${eventIcon(e)}</span>${eventLabel(e)}</div>
         <div class="meta">${fmtTime(e.atISO)}</div></div>
-        <button class="del" data-action="del-event" data-id="${e.id}" aria-label="Delete">${ICON.trash}</button>
+        <button class="del" data-action="del-event" data-id="${e.id}" aria-label="${t('Delete')}">${ICON.trash}</button>
       </div>`
             )
             .join('')}</div>`
@@ -533,8 +525,8 @@ function calendarHTML(b) {
   const body = state.view === 'month' ? monthGridHTML(events) : dayTableHTML(events)
   return `<div class="screen">
     <div class="seg">
-      <button class="${state.view === 'month' ? 'active' : ''}" data-action="view" data-view="month">Month</button>
-      <button class="${state.view === 'day' ? 'active' : ''}" data-action="view" data-view="day">Day</button>
+      <button class="${state.view === 'month' ? 'active' : ''}" data-action="view" data-view="month">${t('Month')}</button>
+      <button class="${state.view === 'day' ? 'active' : ''}" data-action="view" data-view="day">${t('Day')}</button>
     </div>
     <div class="cal-hdr">
       <button class="cal-nav" data-action="cal-prev">${ICON.left}</button>
@@ -552,7 +544,7 @@ function monthGridHTML(events) {
   const offset = (first.getDay() + 6) % 7
   const gridStart = addDays(first, -offset)
   const todayKey = dayKey(new Date())
-  const dows = ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d) => `<div class="dow">${d}</div>`).join('')
+  const dows = Array.from({ length: 7 }, (_, i) => new Date(2024, 0, 1 + i).toLocaleDateString(LOCALE, { weekday: 'narrow' })).map((d) => `<div class="dow">${d}</div>`).join('')
   const cells = Array.from({ length: 42 }, (_, i) => {
     const d = addDays(gridStart, i)
     const inMonth = d.getMonth() === c.getMonth()
@@ -573,7 +565,7 @@ function dayTableHTML(events) {
   const carried = allSleeps
     .filter((e) => atMs(e) < dayStart && sleepEndMs(e) > dayStart)
     .sort((a, c) => atMs(a) - atMs(c))
-  if (evs.length === 0 && carried.length === 0) return `<p class="empty">No entries for this day.</p>`
+  if (evs.length === 0 && carried.length === 0) return `<p class="empty">${t('No entries for this day.')}</p>`
 
   let feeds = 0, pee = 0, poo = 0
   const sleepSec = sleepOnDay(allSleeps, state.cursor)
@@ -587,7 +579,7 @@ function dayTableHTML(events) {
   // "session" while gaps stay under 45 min. A quiet stretch starts a new one.
   const GAP = 45 * 60 * 1000
   const sessions = carried.map((e) => ({
-    kind: 'sleep', carry: true, label: 'Sleep', events: [e], start: e.atISO, end: e.endISO || e.atISO,
+    kind: 'sleep', carry: true, label: t('Sleep'), events: [e], start: e.atISO, end: e.endISO || e.atISO,
     onDaySec: Math.round(overlapSec(e, dayStart, Infinity)),
   }))
   let cur = null
@@ -595,16 +587,16 @@ function dayTableHTML(events) {
   for (const e of evs) {
     if (e.type === 'sleep') {
       cur = null
-      sessions.push({ kind: 'sleep', label: 'Sleep', events: [e], start: e.atISO, end: e.endISO || e.atISO })
+      sessions.push({ kind: 'sleep', label: t('Sleep'), events: [e], start: e.atISO, end: e.endISO || e.atISO })
       continue
     }
-    const t = new Date(e.atISO).getTime()
-    if (cur && t - new Date(cur.end).getTime() <= GAP) {
+    const ts = new Date(e.atISO).getTime()
+    if (cur && ts - new Date(cur.end).getTime() <= GAP) {
       cur.events.push(e)
       cur.end = e.atISO
     } else {
       careCount++
-      cur = { kind: 'care', label: 'Session ' + careCount, events: [e], start: e.atISO, end: e.atISO }
+      cur = { kind: 'care', label: t('Session {n}', { n: careCount }), events: [e], start: e.atISO, end: e.atISO }
       sessions.push(cur)
     }
   }
@@ -613,11 +605,11 @@ function dayTableHTML(events) {
 
   return `${cards}
     <div class="chips">
-      <div class="chip">Feeds<b>${feeds}</b></div>
-      <div class="chip">Sleep<b>${fmtDurationShort(sleepSec)}</b></div>
-      <div class="chip">Pee · Poo<b>${pee} · ${poo}</b></div>
+      <div class="chip">${t('Feeds')}<b>${feeds}</b></div>
+      <div class="chip">${t('Sleep')}<b>${fmtDurationShort(sleepSec)}</b></div>
+      <div class="chip">${t('Pee · Poo')}<b>${pee} · ${poo}</b></div>
     </div>
-    <p class="empty" style="padding:10px 0 0;font-size:11px">Tap a card to view, edit or delete its entries.</p>`
+    <p class="empty" style="padding:10px 0 0;font-size:11px">${t('Tap a card to view, edit or delete its entries.')}</p>`
 }
 
 function sessionCardHTML(s) {
@@ -627,10 +619,10 @@ function sessionCardHTML(s) {
   if (s.kind === 'sleep') {
     const e = s.events[0]
     const body = s.carry
-      ? `${fmtDurationShort(s.onDaySec)} after midnight · ${fmtDurationShort(e.durationSec)} total${e.side ? ' · ' + sideLabel(e.side) : ''}`
-      : `Slept ${fmtDurationShort(e.durationSec)}${e.side ? ' · ' + sideLabel(e.side) : ''}`
+      ? t('{a} after midnight · {b} total', { a: fmtDurationShort(s.onDaySec), b: fmtDurationShort(e.durationSec) }) + (e.side ? ' · ' + sideLabel(e.side) : '')
+      : t('Slept {dur}', { dur: fmtDurationShort(e.durationSec) }) + (e.side ? ' · ' + sideLabel(e.side) : '')
     return `<div class="session" data-action="open-session" data-ids="${ids}">
-      <div class="session-hd"><span>🌙 ${range(e.atISO, e.endISO || e.atISO)}</span><span>${s.carry ? 'Sleep · from yesterday' : 'Sleep'}</span></div>
+      <div class="session-hd"><span>🌙 ${range(e.atISO, e.endISO || e.atISO)}</span><span>${s.carry ? t('Sleep · from yesterday') : t('Sleep')}</span></div>
       <div class="session-body"><div class="session-line">${body}</div></div>
     </div>`
   }
@@ -639,20 +631,20 @@ function sessionCardHTML(s) {
   const lines = []
   const breasts = evs.filter((e) => e.type === 'breast')
   if (breasts.length)
-    lines.push(`🤱 Breast · ${breasts.map((e) => `${e.side === 'both' ? 'L+R' : e.side} ${fmtDurationShort(e.durationSec)}`).join(' + ')}`)
+    lines.push(`🤱 ${t('Breast')} · ${breasts.map((e) => `${sideShort(e.side)} ${fmtDurationShort(e.durationSec)}`).join(' + ')}`)
   const bottles = evs.filter((e) => e.type === 'bottle')
-  if (bottles.length) lines.push(`🍼 Bottle · ${bottles.reduce((sum, e) => sum + e.ml, 0)} ml`)
+  if (bottles.length) lines.push(`🍼 ${t('Bottle · {ml} ml', { ml: bottles.reduce((sum, e) => sum + e.ml, 0) })}`)
   const peeN = evs.filter((e) => e.type === 'pee').length
   const pooN = evs.filter((e) => e.type === 'poo').length
   const temp = evs.filter((e) => e.type === 'temp').slice(-1)[0]
   const dv = []
-  if (peeN) dv.push(`💧 Pee${peeN > 1 ? ' ×' + peeN : ''}`)
-  if (pooN) dv.push(`💩 Poo${pooN > 1 ? ' ×' + pooN : ''}`)
+  if (peeN) dv.push(`💧 ${peeN > 1 ? t('Pee ×{n}', { n: peeN }) : t('Pee')}`)
+  if (pooN) dv.push(`💩 ${pooN > 1 ? t('Poo ×{n}', { n: pooN }) : t('Poo')}`)
   if (temp) dv.push(`🌡️ ${celsiusFmt(temp.celsius)}`)
   if (dv.length) lines.push(dv.join('&nbsp;&nbsp;'))
   const weight = evs.filter((e) => e.type === 'weight').slice(-1)[0]
   if (weight) lines.push(`⚖️ ${kgFmt(weight.grams)}`)
-  if (evs.some((e) => e.type === 'bath')) lines.push('🛁 Bath')
+  if (evs.some((e) => e.type === 'bath')) lines.push('🛁 ' + t('Bath'))
   evs.filter((e) => e.type === 'med').forEach((e) => lines.push(`💊 ${esc(e.note)}`))
   evs.filter((e) => e.type === 'note').forEach((e) => lines.push(`📝 ${esc(e.note)}`))
   evs.filter((e) => e.type === 'milestone').forEach((e) => lines.push(`⭐ ${esc(milestoneData(e).title)}`))
@@ -725,10 +717,10 @@ function statsHTML(b) {
     }
   })
   const FRAMES = [
-    { name: 'Night', icon: '🌌', from: 0, to: 6 },
-    { name: 'Morning', icon: '🌅', from: 6, to: 12 },
-    { name: 'Midday', icon: '☀️', from: 12, to: 18 },
-    { name: 'Evening', icon: '🌆', from: 18, to: 24 },
+    { name: t('Night'), inName: t('in the night'), icon: '🌌', from: 0, to: 6 },
+    { name: t('Morning'), inName: t('in the morning'), icon: '🌅', from: 6, to: 12 },
+    { name: t('Midday'), inName: t('in the midday'), icon: '☀️', from: 12, to: 18 },
+    { name: t('Evening'), inName: t('in the evening'), icon: '🌆', from: 18, to: 24 },
   ].map((f) => ({ ...f, sec: sleepByHour.slice(f.from, f.to).reduce((a, c2) => a + c2, 0) / activeDays }))
   const frameTotal = FRAMES.reduce((a, f) => a + f.sec, 0)
   // Night = 19:00-07:00, measured from the actual hours slept (not the start time).
@@ -749,7 +741,7 @@ function statsHTML(b) {
     </div>`
   }).join('')
   const hourStrip = hourAvg
-    .map((x, h) => `<div title="${pad(h)}:00–${pad((h + 1) % 24)}:00 · asleep ${Math.round(x / 60)} min/day" style="flex:1;height:${Math.max(x ? 3 : 0, (x / 3600) * 100)}%;background:var(--accent);border-radius:2px 2px 0 0;opacity:${0.35 + 0.65 * (x / 3600)}"></div>`)
+    .map((x, h) => `<div title="${t('{h}:00–{h2}:00 · asleep {m} min/day', { h: pad(h), h2: pad((h + 1) % 24), m: Math.round(x / 60) })}" style="flex:1;height:${Math.max(x ? 3 : 0, (x / 3600) * 100)}%;background:var(--accent);border-radius:2px 2px 0 0;opacity:${0.35 + 0.65 * (x / 3600)}"></div>`)
     .join('')
 
   // diapers
@@ -765,8 +757,8 @@ function statsHTML(b) {
     const spanDays = Math.max(1, (atMs(last) - atMs(first)) / 86400000)
     const perDayG = Math.round(gain / spanDays)
     weightSummary = `<div class="stat-grid" style="margin-top:10px">
-      <div class="chip">Total gain<b>${gain >= 0 ? '+' : ''}${gain} g</b></div>
-      <div class="chip">Per day<b>${perDayG >= 0 ? '+' : ''}${perDayG} g</b></div>
+      <div class="chip">${t('Total gain')}<b>${gain >= 0 ? '+' : ''}${gain} g</b></div>
+      <div class="chip">${t('Per day')}<b>${perDayG >= 0 ? '+' : ''}${perDayG} g</b></div>
     </div>`
   }
 
@@ -777,8 +769,8 @@ function statsHTML(b) {
     const first = lengths[0], last = lengths[lengths.length - 1]
     const gain = lengthCm(last) - lengthCm(first)
     lengthSummary = `<div class="stat-grid" style="margin-top:10px">
-      <div class="chip">Latest<b>${cmFmt(lengthCm(last))}</b></div>
-      <div class="chip">Total growth<b>${gain >= 0 ? '+' : ''}${(Math.round(gain * 10) / 10).toFixed(1)} cm</b></div>
+      <div class="chip">${t('Latest')}<b>${cmFmt(lengthCm(last))}</b></div>
+      <div class="chip">${t('Total growth')}<b>${gain >= 0 ? '+' : ''}${(Math.round(gain * 10) / 10).toFixed(1)} cm</b></div>
     </div>`
   }
 
@@ -795,9 +787,9 @@ function statsHTML(b) {
       const durs = dayFeeds.filter((e) => e.type === 'breast' && e.durationSec)
       const avg = durs.length ? fmtDurationShort(Math.round(durs.reduce((s, e) => s + e.durationSec, 0) / durs.length)) : '—'
       return `<div class="logrow">
-        <div><div style="font-weight:500">${d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · ${dayFeeds.length} feeds</div>
+        <div><div style="font-weight:500">${d.toLocaleDateString(LOCALE, { weekday: 'short', month: 'short', day: 'numeric' })} · ${pl(dayFeeds.length, 'feed')}</div>
         <div class="meta">${times}</div></div>
-        <div style="font-size:12px;color:var(--text-dim);white-space:nowrap">avg ${avg}</div>
+        <div style="font-size:12px;color:var(--text-dim);white-space:nowrap">${t('avg {v}', { v: avg })}</div>
       </div>`
     })
     .filter(Boolean)
@@ -808,7 +800,7 @@ function statsHTML(b) {
   feedsAll.forEach((e) => byHour[new Date(e.atISO).getHours()]++)
   const maxHour = Math.max(1, ...byHour)
   const hourBars = byHour
-    .map((n, h) => `<div title="${h}:00 · ${n} feed${n === 1 ? '' : 's'}" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:82px">
+    .map((n, h) => `<div title="${h}:00 · ${pl(n, 'feed')}" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:82px">
         <div style="font-size:9px;font-weight:600;line-height:1;margin-bottom:2px;color:var(--text)">${n || ''}</div>
         <div style="width:100%;background:var(--accent);border-radius:2px 2px 0 0;height:${(n / maxHour) * 100}%;min-height:${n ? 2 : 0}px"></div>
       </div>`)
@@ -816,7 +808,7 @@ function statsHTML(b) {
 
   const maxFeeds = Math.max(1, ...perDay.map((p) => p.feeds))
   const rangeBtn = (n) =>
-    `<button class="${state.statsRange === n ? 'active' : ''}" data-action="stats-range" data-n="${n}">${n}d</button>`
+    `<button class="${state.statsRange === n ? 'active' : ''}" data-action="stats-range" data-n="${n}">${t('{n}d', { n })}</button>`
 
   return `<div class="screen">
     <div class="hdr"><div><p class="name">${esc(b.name)}</p><p class="age">${babyAge(b.birthISO)}</p></div></div>
@@ -824,69 +816,69 @@ function statsHTML(b) {
     <div class="seg">${rangeBtn(7)}${rangeBtn(14)}${rangeBtn(30)}</div>
 
     <div class="stat-grid">
-      <div class="chip">Feeds / day<b>${avgFeeds.toFixed(1)}</b></div>
-      <div class="chip">Sleep / day<b>${fmtDurationShort(Math.round(sleepDay))}</b></div>
-      <div class="chip">Feed interval<b>${avgGap ? fmtDurationShort(Math.round(avgGap)) : '—'}</b></div>
-      <div class="chip">Feed length<b>${avgBreastLen ? fmtDurationShort(Math.round(avgBreastLen)) : '—'}</b></div>
+      <div class="chip">${t('Feeds / day')}<b>${avgFeeds.toFixed(1)}</b></div>
+      <div class="chip">${t('Sleep / day')}<b>${fmtDurationShort(Math.round(sleepDay))}</b></div>
+      <div class="chip">${t('Feed interval')}<b>${avgGap ? fmtDurationShort(Math.round(avgGap)) : '—'}</b></div>
+      <div class="chip">${t('Feed length')}<b>${avgBreastLen ? fmtDurationShort(Math.round(avgBreastLen)) : '—'}</b></div>
     </div>
 
-    <p class="section-label" style="margin-top:16px">${ICON['chart-bar']} Feeds per day</p>
+    <p class="section-label" style="margin-top:16px">${ICON['chart-bar']} ${t('Feeds per day')}</p>
     <div class="tile">
       <div class="bars-labels" style="margin-bottom:2px">${perDay.map((p) => `<span style="font-weight:600;color:var(--text)">${p.feeds || ''}</span>`).join('')}</div>
-      <div class="bars">${perDay.map((p) => `<div class="bar" style="height:${(p.feeds / maxFeeds) * 100}%" title="${p.d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}: ${p.feeds} feeds"></div>`).join('')}</div>
-      <div class="bars-labels">${perDay.map((p) => `<span>${p.d.toLocaleDateString(undefined, { weekday: 'narrow' })}</span>`).join('')}</div>
+      <div class="bars">${perDay.map((p) => `<div class="bar" style="height:${(p.feeds / maxFeeds) * 100}%" title="${p.d.toLocaleDateString(LOCALE, { weekday: 'short', month: 'short', day: 'numeric' })}: ${pl(p.feeds, 'feed')}"></div>`).join('')}</div>
+      <div class="bars-labels">${perDay.map((p) => `<span>${p.d.toLocaleDateString(LOCALE, { weekday: 'narrow' })}</span>`).join('')}</div>
     </div>
     ${feedRows ? `<div class="tile" style="padding:4px 14px;margin-top:10px">${feedRows}</div>` : ''}
 
-    <p class="section-label" style="margin-top:16px">${ICON.scale} Weight</p>
-    ${weights.length < 2 ? `<p class="empty">Add at least two weights to see the trend.</p>` : `<div class="tile">${weightChartSVG(weights)}</div>${weightSummary}`}
+    <p class="section-label" style="margin-top:16px">${ICON.scale} ${t('Weight')}</p>
+    ${weights.length < 2 ? `<p class="empty">${t('Add at least two weights to see the trend.')}</p>` : `<div class="tile">${weightChartSVG(weights)}</div>${weightSummary}`}
 
-    <p class="section-label" style="margin-top:16px">${ICON.length} Length</p>
-    ${lengths.length < 2 ? `<p class="empty">Add at least two lengths to see the trend.</p>` : `<div class="tile">${lengthChartSVG(lengths)}</div>${lengthSummary}`}
+    <p class="section-label" style="margin-top:16px">${ICON.length} ${t('Length')}</p>
+    ${lengths.length < 2 ? `<p class="empty">${t('Add at least two lengths to see the trend.')}</p>` : `<div class="tile">${lengthChartSVG(lengths)}</div>${lengthSummary}`}
 
-    <p class="section-label" style="margin-top:16px">${ICON.milk} Feeding</p>
+    <p class="section-label" style="margin-top:16px">${ICON.milk} ${t('Feeding')}</p>
     <div class="tile">
-      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-dim);margin-bottom:6px"><span>Left ${lCount}</span><span>Right ${rCount}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-dim);margin-bottom:6px"><span>${t('Left {n}', { n: lCount })}</span><span>${t('Right {n}', { n: rCount })}</span></div>
       <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--accent-soft)">
         <div style="width:${(lCount / lrTotal) * 100}%;background:var(--accent)"></div>
       </div>
       <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:12px">
-        <span style="color:var(--text-dim)">Bottle / day</span><span style="font-weight:600">${bottleMlDay ? Math.round(bottleMlDay) + ' ml' : '—'}</span>
+        <span style="color:var(--text-dim)">${t('Bottle / day')}</span><span style="font-weight:600">${bottleMlDay ? Math.round(bottleMlDay) + ' ml' : '—'}</span>
       </div>
     </div>
 
-    <p class="section-label" style="margin-top:16px">${ICON.moon} Sleep</p>
+    <p class="section-label" style="margin-top:16px">${ICON.moon} ${t('Sleep')}</p>
     <div class="stat-grid">
-      <div class="chip">Longest stretch<b>${longest ? fmtDurationShort(longest) : '—'}</b></div>
-      <div class="chip">Sleeps / day<b>${sleepsDay.toFixed(1)}</b></div>
+      <div class="chip">${t('Longest stretch')}<b>${longest ? fmtDurationShort(longest) : '—'}</b></div>
+      <div class="chip">${t('Sleeps / day')}<b>${sleepsDay.toFixed(1)}</b></div>
     </div>
     <div class="tile" style="margin-top:10px">
-      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-dim);margin-bottom:6px"><span>🌙 Night ${nightPct}%</span><span>☀️ Day ${100 - nightPct}%</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-dim);margin-bottom:6px"><span>🌙 ${t('Night {p}%', { p: nightPct })}</span><span>☀️ ${t('Day {p}%', { p: 100 - nightPct })}</span></div>
       <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--accent-soft)">
         <div style="width:${nightPct}%;background:var(--accent)"></div>
       </div>
     </div>
 
-    <p class="section-label" style="margin-top:16px">🕰️ Sleep by time of day</p>
+    <p class="section-label" style="margin-top:16px">🕰️ ${t('Sleep by time of day')}</p>
     ${
       !frameTotal
-        ? `<p class="empty">No sleep logged in this period.</p>`
+        ? `<p class="empty">${t('No sleep logged in this period.')}</p>`
         : `<div class="tile">
-      <p class="meta" style="margin:0 0 10px">Mostly sleeps in the <b>${topFrame.name.toLowerCase()}</b> · ${fmtDurationShort(Math.round(topFrame.sec))} a day on average</p>
+      <p class="meta" style="margin:0 0 10px">${t('Mostly sleeps in the <b>{frame}</b> · {dur} a day on average', { frame: topFrame.inName, dur: fmtDurationShort(Math.round(topFrame.sec)) })}</p>
       ${frameRows}
       <div style="display:flex;gap:2px;align-items:flex-end;height:46px;margin-top:14px">${hourStrip}</div>
       <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim);margin-top:4px"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
-      <p class="meta" style="margin-top:8px">Most asleep ${pad(peakHour)}:00–${pad((peakHour + 1) % 24)}:00 · ${Math.round(hourAvg[peakHour] / 60)} of 60 min on average</p>
+      <p class="meta" style="margin-top:8px">${t('Most asleep {a}:00–{b}:00 · {m} of 60 min on average', { a: pad(peakHour), b: pad((peakHour + 1) % 24), m: Math.round(hourAvg[peakHour] / 60) })}</p>
     </div>`
     }
 
-    <p class="section-label" style="margin-top:16px">💧 Diapers</p>
+    <p class="section-label" style="margin-top:16px">💧 ${t('Diapers')}</p>
     <div class="stat-grid">
-      <div class="chip">Pee / day<b>${peeDay.toFixed(1)}</b></div>
-      <div class="chip">Poo / day<b>${pooDay.toFixed(1)}</b></div>
+      <div class="chip">${t('Pee / day')}<b>${peeDay.toFixed(1)}</b></div>
+      <div class="chip">${t('Poo / day')}<b>${pooDay.toFixed(1)}</b></div>
     </div>
 
-    <p class="section-label" style="margin-top:16px">🕐 Feeding times (24h)</p>
+    <p class="section-label" style="margin-top:16px">🕐 ${t('Feeding times (24h)')}</p>
     <div class="tile">
       <div style="display:flex;gap:2px;align-items:flex-end">${hourBars}</div>
       <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim);margin-top:4px">
@@ -914,7 +906,7 @@ function measureChartSVG(items, valueOf, fmtVal, fmtAxis, label) {
     .map((it) => {
       const x = px(atMs(it)), y = py(valueOf(it))
       const v = fmtVal(valueOf(it))
-      const dateStr = new Date(atMs(it)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      const dateStr = new Date(atMs(it)).toLocaleDateString(LOCALE, { month: 'short', day: 'numeric' })
       const anchor = x > W - 60 ? 'end' : x < 40 ? 'start' : 'middle'
       // Flip the label below the point when it sits too near the top to fit above.
       const below = y - 30 < 0
@@ -928,19 +920,19 @@ function measureChartSVG(items, valueOf, fmtVal, fmtAxis, label) {
       </g>`
     })
     .join('')
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${label} over time">
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${t('{label} over time', { label })}">
     <text x="2" y="${padT + 4}" font-size="10" fill="var(--text-dim)">${fmtAxis(maxY)}</text>
     <text x="2" y="${H - padB}" font-size="10" fill="var(--text-dim)">${fmtAxis(minY)}</text>
     <polyline points="${pts.join(' ')}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>
     ${dots}
-    <text x="${padL}" y="${H - 4}" font-size="10" fill="var(--text-dim)">${new Date(minX).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</text>
-    <text x="${W - padR}" y="${H - 4}" font-size="10" fill="var(--text-dim)" text-anchor="end">${new Date(maxX).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</text>
+    <text x="${padL}" y="${H - 4}" font-size="10" fill="var(--text-dim)">${new Date(minX).toLocaleDateString(LOCALE, { month: 'short', day: 'numeric' })}</text>
+    <text x="${W - padR}" y="${H - 4}" font-size="10" fill="var(--text-dim)" text-anchor="end">${new Date(maxX).toLocaleDateString(LOCALE, { month: 'short', day: 'numeric' })}</text>
   </svg>`
 }
 const weightChartSVG = (weights) =>
-  measureChartSVG(weights, (w) => w.grams, (g) => kgFmt(g), (g) => (g / 1000).toFixed(2), 'Weight')
+  measureChartSVG(weights, (w) => w.grams, (g) => kgFmt(g), (g) => (g / 1000).toFixed(2), t('Weight'))
 const lengthChartSVG = (lengths) =>
-  measureChartSVG(lengths, lengthCm, cmFmt, (c) => (Math.round(c * 10) / 10).toFixed(1), 'Length')
+  measureChartSVG(lengths, lengthCm, cmFmt, (c) => (Math.round(c * 10) / 10).toFixed(1), t('Length'))
 
 /* ---- milestones ---- */
 // Typical order of upcoming milestones, used for the faded "next stops".
@@ -952,7 +944,7 @@ function monthsOld(birthISO, ms) {
   if (d.getDate() < b.getDate()) m--
   return Math.max(0, m)
 }
-const monthChip = (m) => `<span class="chapter">${m === 0 ? 'Newborn' : m + (m === 1 ? ' month' : ' months')}</span>`
+const monthChip = (m) => `<span class="chapter">${m === 0 ? t('Newborn') : pl(m, 'month')}</span>`
 
 // Moments as a winding road: Born at the top, milestones as stops alternating
 // left/right, then up to two faded next stops. The road is an SVG drawn in a
@@ -962,11 +954,12 @@ function milestonesHTML(b) {
     .filter((e) => e.babyId === b.id && e.type === 'milestone')
     .sort((a, c) => atMs(a) - atMs(c))
   const have = new Set(list.map((e) => milestoneData(e).title.toLowerCase()))
-  const next = NEXT_STOPS.filter((t) => !have.has(t.toLowerCase())).slice(0, 2)
+  // a stop counts as done whether it was saved in English or in the current language
+  const next = NEXT_STOPS.filter((s) => !have.has(s.toLowerCase()) && !have.has(t(s).toLowerCase())).slice(0, 2).map((s) => t(s))
 
   const stops = [{ kind: 'born', ms: new Date(b.birthISO).getTime() }]
   list.forEach((e) => stops.push({ kind: 'ms', e, ms: atMs(e) }))
-  next.forEach((t) => stops.push({ kind: 'next', title: t }))
+  next.forEach((s) => stops.push({ kind: 'next', title: s }))
 
   const STEP = 128, TOP = 44
   const xOf = (i) => (i === 0 ? 50 : i % 2 ? 24 : 76)
@@ -983,8 +976,8 @@ function milestonesHTML(b) {
       let dot, title, meta = '', action = '', chip = ''
       if (st.kind === 'born') {
         dot = `<span class="stop-dot born">${ICON.baby}</span>`
-        title = 'Born'
-        meta = new Date(b.birthISO).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+        title = t('Born')
+        meta = new Date(b.birthISO).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short', year: 'numeric' })
         lastMonth = 0
         chip = monthChip(0)
       } else if (st.kind === 'ms') {
@@ -994,7 +987,7 @@ function milestonesHTML(b) {
           ? `<span class="stop-dot"><img src="${PHOTO_URL(m.media[0].id)}" alt="">${badge}</span>`
           : `<span class="stop-dot">${ICON.star}</span>`
         title = esc(m.title)
-        meta = `${babyAge(b.birthISO, st.ms).replace(' old', '')} · ${new Date(st.ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`
+        meta = `${babyAge(b.birthISO, st.ms, false)} · ${new Date(st.ms).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short' })}`
         const mo = monthsOld(b.birthISO, st.ms)
         if (mo !== lastMonth) {
           chip = monthChip(mo)
@@ -1004,7 +997,7 @@ function milestonesHTML(b) {
       } else {
         dot = `<span class="stop-dot next">?</span>`
         title = esc(st.title) + '?'
-        meta = 'next stop · tap to add'
+        meta = t('next stop · tap to add')
         action = `data-action="next-stop" data-t="${esc(st.title)}"`
       }
       return `<button class="stop ${st.kind} lbl-${side}" style="left:${x}%;top:${y}px" ${action}>
@@ -1022,8 +1015,8 @@ function milestonesHTML(b) {
   }
 
   return `<div class="screen">
-    <div class="hdr"><div><p class="name">${esc(b.name)}'s journey</p><p class="age">${babyAge(b.birthISO)}</p></div></div>
-    <button class="btn block" data-action="sheet" data-type="milestone" style="margin-bottom:8px">${ICON.star} Add milestone</button>
+    <div class="hdr"><div><p class="name">${t("{name}'s journey", { name: esc(b.name) })}</p><p class="age">${babyAge(b.birthISO)}</p></div></div>
+    <button class="btn block" data-action="sheet" data-type="milestone" style="margin-bottom:8px">${ICON.star} ${t('Add milestone')}</button>
     <div class="road" style="height:${H}px">
       <svg viewBox="0 0 100 ${H}" preserveAspectRatio="none" width="100%" height="${H}" aria-hidden="true">
         <path d="${dReal}" class="road-bed"/>
@@ -1055,10 +1048,10 @@ function mediaViewerHTML() {
   return `<div class="overlay media-view" data-action="close-media">
     <div class="mv-body" data-stop="1"><img src="${PHOTO_URL(media[i].id)}" alt=""></div>
     <div class="mv-bar" data-stop="1">
-      <button class="mv-btn" data-action="media-step" data-d="-1" ${i === 0 ? 'disabled' : ''} aria-label="Previous">‹</button>
+      <button class="mv-btn" data-action="media-step" data-d="-1" ${i === 0 ? 'disabled' : ''} aria-label="${t('Previous')}">‹</button>
       <span>${i + 1} / ${media.length}</span>
-      <button class="mv-btn" data-action="media-step" data-d="1" ${i === media.length - 1 ? 'disabled' : ''} aria-label="Next">›</button>
-      <button class="mv-btn" data-action="close-media" aria-label="Close">✕</button>
+      <button class="mv-btn" data-action="media-step" data-d="1" ${i === media.length - 1 ? 'disabled' : ''} aria-label="${t('Next')}">›</button>
+      <button class="mv-btn" data-action="close-media" aria-label="${t('Close')}">✕</button>
     </div>
   </div>`
 }
@@ -1073,12 +1066,12 @@ function msDetailHTML() {
   return `<div class="overlay" data-action="close-ms"><div class="sheet" data-stop="1">
     ${galleryHTML(e.id, m.media)}
     <h3 style="margin-bottom:4px">${ICON.star} ${esc(m.title)}</h3>
-    <p class="meta">${d.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })} · ${babyAge(b.birthISO, d.getTime())}</p>
+    <p class="meta">${d.toLocaleDateString(LOCALE, { day: 'numeric', month: 'long', year: 'numeric' })} · ${babyAge(b.birthISO, d.getTime())}</p>
     ${m.text ? `<p class="ms-text">${esc(m.text)}</p>` : ''}
     <div class="sheet-actions">
-      <button class="btn ghost" data-action="del-event-confirm" data-id="${e.id}">Delete</button>
-      <button class="btn ghost" data-action="edit-event" data-id="${e.id}">Edit</button>
-      <button class="btn" data-action="close-ms">Close</button>
+      <button class="btn ghost" data-action="del-event-confirm" data-id="${e.id}">${t('Delete')}</button>
+      <button class="btn ghost" data-action="edit-event" data-id="${e.id}">${t('Edit')}</button>
+      <button class="btn" data-action="close-ms">${t('Close')}</button>
     </div>
   </div></div>`
 }
@@ -1086,66 +1079,73 @@ function msDetailHTML() {
 /* ---- settings ---- */
 function settingsHTML(b) {
   return `<div class="screen">
-    <div class="hdr"><p class="name">Baby</p></div>
+    <div class="hdr"><p class="name">${t('Baby')}</p></div>
     <div class="tile" style="margin-bottom:12px">
       <p style="margin:0;font-size:18px;font-weight:600">${esc(b.name)}</p>
-      <p style="margin:4px 0 0;color:var(--text-dim);font-size:13px">${b.sex === 'girl' ? 'Girl · pink theme' : 'Boy · blue theme'}</p>
-      <p style="margin:2px 0 12px;color:var(--text-dim);font-size:13px">Born ${new Date(b.birthISO).toLocaleString()}</p>
-      <button class="btn small" data-action="edit-baby">Edit baby</button>
+      <p style="margin:4px 0 0;color:var(--text-dim);font-size:13px">${b.sex === 'girl' ? t('Girl · pink theme') : t('Boy · blue theme')}</p>
+      <p style="margin:2px 0 12px;color:var(--text-dim);font-size:13px">${t('Born {date}', { date: new Date(b.birthISO).toLocaleString(LOCALE) })}</p>
+      <button class="btn small" data-action="edit-baby">${t('Edit baby')}</button>
     </div>
-    <button class="btn block ghost" style="margin-bottom:20px" data-action="add-baby"><span>${ICON.plus}</span> Add another baby</button>
+    <button class="btn block ghost" style="margin-bottom:20px" data-action="add-baby"><span>${ICON.plus}</span> ${t('Add another baby')}</button>
 
-    <p class="section-label">💊 Medicines</p>
+    <p class="section-label">💊 ${t('Medicines')}</p>
     ${
       medicines().length === 0
-        ? `<p class="empty" style="padding:6px 0 12px">No medicines yet.</p>`
+        ? `<p class="empty" style="padding:6px 0 12px">${t('No medicines yet.')}</p>`
         : `<div class="tile" style="padding:4px 14px;margin-bottom:12px">${medicines()
             .map(
               (m) => `<div class="logrow">
-        <div><div style="font-weight:500">${esc(m.name)}</div><div class="meta">${m.perDay ? m.perDay + '× a day' : 'As needed'}${m.description ? ' · ' + esc(m.description) : ''}</div></div>
+        <div><div style="font-weight:500">${esc(m.name)}</div><div class="meta">${m.perDay ? t('{n}× a day', { n: m.perDay }) : t('As needed')}${m.description ? ' · ' + esc(m.description) : ''}</div></div>
         <div style="display:flex;gap:6px;align-items:center">
-          <button class="btn ghost small" data-action="edit-med" data-id="${m.id}">Edit</button>
-          <button class="del" data-action="del-event-confirm" data-id="${m.id}" aria-label="Delete">${ICON.trash}</button>
+          <button class="btn ghost small" data-action="edit-med" data-id="${m.id}">${t('Edit')}</button>
+          <button class="del" data-action="del-event-confirm" data-id="${m.id}" aria-label="${t('Delete')}">${ICON.trash}</button>
         </div>
       </div>`
             )
             .join('')}</div>`
     }
-    <button class="btn block ghost" style="margin-bottom:20px" data-action="sheet" data-type="add-med"><span>${ICON.plus}</span> Add medicine</button>
+    <button class="btn block ghost" style="margin-bottom:20px" data-action="sheet" data-type="add-med"><span>${ICON.plus}</span> ${t('Add medicine')}</button>
 
-    <p class="section-label">🌙 Night mode</p>
+    <p class="section-label">🌙 ${t('Night mode')}</p>
     <div class="tile" style="margin-bottom:20px">
       <div class="seg-pick">${['auto', 'on', 'off']
-        .map((v) => `<button data-action="night-pref" data-v="${v}" class="${nightPref() === v ? 'on' : ''}">${v === 'auto' ? 'Auto 21–07' : v === 'on' ? 'Always' : 'Off'}</button>`)
+        .map((v) => `<button data-action="night-pref" data-v="${v}" class="${nightPref() === v ? 'on' : ''}">${v === 'auto' ? t('Auto 21–07') : v === 'on' ? t('Always') : t('Off')}</button>`)
         .join('')}</div>
-      <p class="meta" style="margin-top:8px">Dim, warm colours for night feeds. Auto switches on between 21:00 and 07:00 (this device).</p>
+      <p class="meta" style="margin-top:8px">${t('Dim, warm colours for night feeds. Auto switches on between 21:00 and 07:00 (this device).')}</p>
     </div>
 
-    <p class="section-label">${ICON.database} Backup</p>
-    <div class="tile">
-      <p style="margin:0 0 12px;font-size:13px;color:var(--text-dim)">Your data lives on the server and is shared across devices. Export a JSON copy any time.</p>
-      <button class="btn ghost" data-action="export">Export data</button>
+    <p class="section-label">🌐 ${t('Language')}</p>
+    <div class="tile" style="margin-bottom:20px">
+      <div class="seg-pick">${Object.entries(LANGS)
+        .map(([k, name]) => `<button data-action="lang" data-v="${k}" class="${LANG === k ? 'on' : ''}">${name}</button>`)
+        .join('')}</div>
     </div>
-    ${getCookie('csrf_token') ? `<button class="btn block ghost" style="margin-top:24px" data-action="logout">Log out</button>` : ''}
-    <button class="btn block" style="background:var(--danger);margin-top:12px" data-action="delete-baby">Delete this baby</button>
+
+    <p class="section-label">${ICON.database} ${t('Backup')}</p>
+    <div class="tile">
+      <p style="margin:0 0 12px;font-size:13px;color:var(--text-dim)">${t('Your data lives on the server and is shared across devices. Export a JSON copy any time.')}</p>
+      <button class="btn ghost" data-action="export">${t('Export data')}</button>
+    </div>
+    ${getCookie('csrf_token') ? `<button class="btn block ghost" style="margin-top:24px" data-action="logout">${t('Log out')}</button>` : ''}
+    <button class="btn block" style="background:var(--danger);margin-top:12px" data-action="delete-baby">${t('Delete this baby')}</button>
   </div>`
 }
 
 /* ---- quick check-in sheet ---- */
 function checkinSheetHTML() {
   const b = activeBaby()
-  const name = b ? esc(b.name) : 'baby'
+  const name = b ? esc(b.name) : t('baby')
   const yesno = (id) =>
-    `<div class="seg-pick" id="${id}"><button data-val="no" class="on">No</button><button data-val="yes">Yes</button></div>`
+    `<div class="seg-pick" id="${id}"><button data-val="no" class="on">${t('No')}</button><button data-val="yes">${t('Yes')}</button></div>`
   return `<div class="overlay" data-action="close-sheet"><div class="sheet" data-stop="1">
-    <h3>Check-in · ${name}</h3>
-    ${field(`Did ${name} pee?`, yesno('ci-pee'))}
-    ${field(`Did ${name} poo?`, yesno('ci-poo'))}
-    ${field('Temperature (°C) — optional', `<input id="ci-temp" type="text" inputmode="decimal" placeholder="36.6">`)}
+    <h3>${t('Check-in · {name}', { name })}</h3>
+    ${field(t('Did {name} pee?', { name }), yesno('ci-pee'))}
+    ${field(t('Did {name} poo?', { name }), yesno('ci-poo'))}
+    ${field(t('Temperature (°C) — optional'), `<input id="ci-temp" type="text" inputmode="decimal" placeholder="36.6">`)}
     ${dateTimeFields(new Date())}
     <div class="sheet-actions">
-      <button class="btn ghost" data-action="close-sheet">Cancel</button>
-      <button class="btn" data-action="save-checkin">Save</button>
+      <button class="btn ghost" data-action="close-sheet">${t('Cancel')}</button>
+      <button class="btn" data-action="save-checkin">${t('Save')}</button>
     </div>
   </div></div>`
 }
@@ -1156,38 +1156,38 @@ function sheetHTML(sheet) {
   if (sheet.type === 'med') return medSheetHTML(sheet)
   if (sheet.type === 'add-med') return addMedSheetHTML(sheet)
   if (sheet.type === 'milestone') return milestoneSheetHTML(sheet)
-  const t = sheet.type
+  const ty = sheet.type
   const ev = sheet.editId ? state.events.find((e) => e.id === sheet.editId) : null
   const names = { bottle: 'bottle feed', temp: 'temperature', weight: 'weight', length: 'length', note: 'note', breast: 'breastfeed', pee: 'pee', poo: 'poo', sleep: 'sleep' }
-  const title = (ev ? 'Edit ' : 'Add ') + names[t]
+  const title = t(ev ? 'Edit {what}' : 'Add {what}', { what: t(names[ty]) })
   const d = ev ? new Date(ev.atISO) : new Date()
   const on = (cond) => (cond ? ' class="on"' : '')
 
   let fields = ''
-  if (t === 'bottle')
-    fields = field('Amount (ml)', `<input id="f-ml" type="text" inputmode="decimal" placeholder="60" value="${ev ? ev.ml : ''}" autofocus>`)
-  if (t === 'breast')
+  if (ty === 'bottle')
+    fields = field(t('Amount (ml)'), `<input id="f-ml" type="text" inputmode="decimal" placeholder="60" value="${ev ? ev.ml : ''}" autofocus>`)
+  if (ty === 'breast')
     fields =
-      field('Side', `<div class="seg-pick" id="f-side"><button data-side="L"${on(ev && ev.side === 'L')}>Left</button><button data-side="R"${on(ev && ev.side === 'R')}>Right</button><button data-side="both"${on(!ev || ev.side === 'both')}>Both</button></div>`) +
+      field(t('Side'), `<div class="seg-pick" id="f-side"><button data-side="L"${on(ev && ev.side === 'L')}>${t('Left')}</button><button data-side="R"${on(ev && ev.side === 'R')}>${t('Right')}</button><button data-side="both"${on(!ev || ev.side === 'both')}>${t('Both')}</button></div>`) +
       durUntilFields(ev, '15')
-  if (t === 'sleep')
+  if (ty === 'sleep')
     fields =
-      field('Position', `<div class="seg-pick" id="f-side"><button data-side="back"${on(!ev || ev.side === 'back' || !ev.side)}>On back</button><button data-side="L"${on(ev && ev.side === 'L')}>Left</button><button data-side="R"${on(ev && ev.side === 'R')}>Right</button></div>`) +
+      field(t('Position'), `<div class="seg-pick" id="f-side"><button data-side="back"${on(!ev || ev.side === 'back' || !ev.side)}>${t('On back')}</button><button data-side="L"${on(ev && ev.side === 'L')}>${t('Left')}</button><button data-side="R"${on(ev && ev.side === 'R')}>${t('Right')}</button></div>`) +
       durUntilFields(ev, '60')
-  if (t === 'temp')
-    fields = field('Temperature (°C)', `<input id="f-temp" type="text" inputmode="decimal" placeholder="36.6" value="${ev ? ev.celsius : ''}" autofocus>`)
-  if (t === 'weight')
-    fields = field('Weight (kg)', `<input id="f-weight" type="text" inputmode="decimal" placeholder="3.42" value="${ev ? (ev.grams / 1000).toFixed(2) : ''}" autofocus>`)
-  if (t === 'length')
-    fields = field('Length (cm)', `<input id="f-length" type="text" inputmode="decimal" placeholder="52.5" value="${ev ? cmFmt(lengthCm(ev)).replace(' cm', '') : ''}" autofocus>`)
+  if (ty === 'temp')
+    fields = field(t('Temperature (°C)'), `<input id="f-temp" type="text" inputmode="decimal" placeholder="36.6" value="${ev ? ev.celsius : ''}" autofocus>`)
+  if (ty === 'weight')
+    fields = field(t('Weight (kg)'), `<input id="f-weight" type="text" inputmode="decimal" placeholder="3.42" value="${ev ? (ev.grams / 1000).toFixed(2) : ''}" autofocus>`)
+  if (ty === 'length')
+    fields = field(t('Length (cm)'), `<input id="f-length" type="text" inputmode="decimal" placeholder="52.5" value="${ev ? cmFmt(lengthCm(ev)).replace(' cm', '') : ''}" autofocus>`)
 
   const noteVal = ev && ev.note ? esc(ev.note) : ''
   const noteField =
-    t === 'note'
-      ? field('Note', `<textarea id="f-note" autofocus>${noteVal}</textarea>`)
-      : t === 'sleep' || t === 'bath' || t === 'length'
+    ty === 'note'
+      ? field(t('Note'), `<textarea id="f-note" autofocus>${noteVal}</textarea>`)
+      : ty === 'sleep' || ty === 'bath' || ty === 'length'
       ? ''
-      : field('Note (optional)', `<input id="f-note" value="${noteVal}">`)
+      : field(t('Note (optional)'), `<input id="f-note" value="${noteVal}">`)
 
   return `<div class="overlay" data-action="close-sheet"><div class="sheet" data-stop="1">
     <h3>${title}</h3>
@@ -1196,8 +1196,8 @@ function sheetHTML(sheet) {
     ${noteField}
     <p id="sheet-err" style="color:var(--danger);font-size:13px;margin:0 0 10px;display:none"></p>
     <div class="sheet-actions">
-      <button class="btn ghost" data-action="close-sheet">Cancel</button>
-      <button class="btn" data-action="save-sheet">Save</button>
+      <button class="btn ghost" data-action="close-sheet">${t('Cancel')}</button>
+      <button class="btn" data-action="save-sheet">${t('Save')}</button>
     </div>
   </div></div>`
 }
@@ -1208,14 +1208,14 @@ const field = (label, inner) => `<div class="field"><label>${label}</label>${inn
 function durUntilFields(ev, ph) {
   const untilVal = ev && ev.endISO ? `${pad(new Date(ev.endISO).getHours())}:${pad(new Date(ev.endISO).getMinutes())}` : ''
   return `
-    <div class="field"><label>Length</label>
+    <div class="field"><label>${t('Length')}</label>
       <div class="seg-pick" id="dur-mode">
-        <button data-action="dur-mode" data-mode="dur" class="on">Duration</button>
-        <button data-action="dur-mode" data-mode="until">End time</button>
+        <button data-action="dur-mode" data-mode="dur" class="on">${t('Duration')}</button>
+        <button data-action="dur-mode" data-mode="until">${t('End time')}</button>
       </div>
     </div>
-    <div class="field" id="dur-field"><label>Minutes</label><input id="f-min" type="text" inputmode="decimal" placeholder="${ph}" value="${ev ? Math.round(ev.durationSec / 60) : ''}"></div>
-    <div class="field" id="until-field" hidden><label>Ends at</label><input id="f-until" type="time" value="${untilVal}"></div>`
+    <div class="field" id="dur-field"><label>${t('Minutes')}</label><input id="f-min" type="text" inputmode="decimal" placeholder="${ph}" value="${ev ? Math.round(ev.durationSec / 60) : ''}"></div>
+    <div class="field" id="until-field" hidden><label>${t('Ends at')}</label><input id="f-until" type="time" value="${untilVal}"></div>`
 }
 
 function medSheetHTML(sheet) {
@@ -1224,9 +1224,9 @@ function medSheetHTML(sheet) {
   const d = ev ? new Date(ev.atISO) : new Date()
   if (!meds.length && !ev) {
     return `<div class="overlay" data-action="close-sheet"><div class="sheet" data-stop="1">
-      <h3>Medicine</h3>
-      <p style="font-size:13px;color:var(--text-dim)">No medicines yet. Add them in the Baby tab under "Medicines" first.</p>
-      <div class="sheet-actions"><button class="btn" data-action="close-sheet">OK</button></div>
+      <h3>${t('Medicine')}</h3>
+      <p style="font-size:13px;color:var(--text-dim)">${t('No medicines yet. Add them in the Baby tab under "Medicines" first.')}</p>
+      <div class="sheet-actions"><button class="btn" data-action="close-sheet">${t('OK')}</button></div>
     </div></div>`
   }
   let selName = meds[0] ? meds[0].name : ''
@@ -1239,14 +1239,14 @@ function medSheetHTML(sheet) {
   const extra = ev && selName && !meds.some((m) => m.name === selName) ? `<option value="${esc(selName)}" selected>${esc(selName)}</option>` : ''
   const options = meds.map((m) => `<option value="${esc(m.name)}"${m.name === selName ? ' selected' : ''}>${esc(m.name)}</option>`).join('')
   return `<div class="overlay" data-action="close-sheet"><div class="sheet" data-stop="1">
-    <h3>${ev ? 'Edit medicine' : 'Log medicine'}</h3>
-    ${field('Medicine', `<select id="f-med">${extra}${options}</select>`)}
-    ${field('Dose / note (optional)', `<input id="f-dose" value="${esc(dose)}" placeholder="e.g. 2.5 ml">`)}
+    <h3>${ev ? t('Edit medicine') : t('Log medicine')}</h3>
+    ${field(t('Medicine'), `<select id="f-med">${extra}${options}</select>`)}
+    ${field(t('Dose / note (optional)'), `<input id="f-dose" value="${esc(dose)}" placeholder="${t('e.g. 2.5 ml')}">`)}
     ${dateTimeFields(d)}
     <p id="sheet-err" style="color:var(--danger);font-size:13px;margin:0 0 10px;display:none"></p>
     <div class="sheet-actions">
-      <button class="btn ghost" data-action="close-sheet">Cancel</button>
-      <button class="btn" data-action="save-med">Save</button>
+      <button class="btn ghost" data-action="close-sheet">${t('Cancel')}</button>
+      <button class="btn" data-action="save-med">${t('Save')}</button>
     </div>
   </div></div>`
 }
@@ -1254,16 +1254,16 @@ function medSheetHTML(sheet) {
 function addMedSheetHTML(sheet) {
   const m = sheet && sheet.editId ? medicines().find((x) => x.id === sheet.editId) : null
   return `<div class="overlay" data-action="close-sheet"><div class="sheet" data-stop="1">
-    <h3>${m ? 'Edit medicine' : 'Add medicine'}</h3>
-    ${field('Name', `<input id="md-name" placeholder="e.g. Vitamin D" value="${m ? esc(m.name) : ''}" autofocus>`)}
-    ${field('Times per day', `<div class="seg-pick" id="md-perday">${[0, 1, 2, 3]
-      .map((n) => `<button data-n="${n}"${(m ? m.perDay : 0) === n ? ' class="on"' : ''}>${n ? n + '×' : 'As needed'}</button>`)
+    <h3>${m ? t('Edit medicine') : t('Add medicine')}</h3>
+    ${field(t('Name'), `<input id="md-name" placeholder="${t('e.g. Vitamin D')}" value="${m ? esc(m.name) : ''}" autofocus>`)}
+    ${field(t('Times per day'), `<div class="seg-pick" id="md-perday">${[0, 1, 2, 3]
+      .map((n) => `<button data-n="${n}"${(m ? m.perDay : 0) === n ? ' class="on"' : ''}>${n ? n + '×' : t('As needed')}</button>`)
       .join('')}</div>`)}
-    ${field('Description (optional)', `<textarea id="md-desc" placeholder="dose, when to give, notes">${m ? esc(m.description) : ''}</textarea>`)}
+    ${field(t('Description (optional)'), `<textarea id="md-desc" placeholder="${t('dose, when to give, notes')}">${m ? esc(m.description) : ''}</textarea>`)}
     <p id="sheet-err" style="color:var(--danger);font-size:13px;margin:0 0 10px;display:none"></p>
     <div class="sheet-actions">
-      <button class="btn ghost" data-action="close-sheet">Cancel</button>
-      <button class="btn" data-action="save-add-med">Save</button>
+      <button class="btn ghost" data-action="close-sheet">${t('Cancel')}</button>
+      <button class="btn" data-action="save-add-med">${t('Save')}</button>
     </div>
   </div></div>`
 }
@@ -1286,22 +1286,22 @@ function milestoneSheetHTML(sheet) {
   const m = ev ? milestoneData(ev) : { title: sheet.prefill || '', text: '', media: [] }
   const d = ev ? new Date(ev.atISO) : new Date()
   return `<div class="overlay" data-action="close-sheet"><div class="sheet" data-stop="1">
-    <h3>${ev ? 'Edit milestone' : 'Add milestone'}</h3>
-    <div class="ms-chips">${MS_SUGGEST.map((t) => `<button data-action="ms-suggest" data-t="${esc(t)}">${esc(t)}</button>`).join('')}</div>
-    ${field('Title', `<input id="ms-title" value="${esc(m.title)}" placeholder="e.g. First smile">`)}
-    ${field('Note (optional)', `<textarea id="ms-text" placeholder="what happened">${esc(m.text)}</textarea>`)}
+    <h3>${ev ? t('Edit milestone') : t('Add milestone')}</h3>
+    <div class="ms-chips">${MS_SUGGEST.map((s) => `<button data-action="ms-suggest" data-t="${esc(t(s))}">${esc(t(s))}</button>`).join('')}</div>
+    ${field(t('Title'), `<input id="ms-title" value="${esc(m.title)}" placeholder="${t('e.g. First smile')}">`)}
+    ${field(t('Note (optional)'), `<textarea id="ms-text" placeholder="${t('what happened')}">${esc(m.text)}</textarea>`)}
     ${dateTimeFields(d)}
-    <div class="field"><label>Photos (optional)</label>
+    <div class="field"><label>${t('Photos (optional)')}</label>
       <div id="ms-grid" class="ms-gallery edit">${msGridHTML()}</div>
-      <label class="btn ghost small ms-add">${ICON.plus} Add photos
+      <label class="btn ghost small ms-add">${ICON.plus} ${t('Add photos')}
         <input id="ms-files" type="file" accept="image/*" multiple hidden>
       </label>
       <p id="ms-status" class="meta" style="margin-top:6px"></p>
     </div>
     <p id="sheet-err" style="color:var(--danger);font-size:13px;margin:0 0 10px;display:none"></p>
     <div class="sheet-actions">
-      <button class="btn ghost" data-action="close-sheet">Cancel</button>
-      <button class="btn" id="ms-save" data-action="save-milestone">Save</button>
+      <button class="btn ghost" data-action="close-sheet">${t('Cancel')}</button>
+      <button class="btn" id="ms-save" data-action="save-milestone">${t('Save')}</button>
     </div>
   </div></div>`
 }
@@ -1310,7 +1310,7 @@ function msGridHTML() {
     .map(
       (m, i) => `<div class="ms-tile">
         <img src="${m.data || PHOTO_URL(m.id)}" alt="">
-        <button class="ms-x" data-action="ms-del-media" data-i="${i}" aria-label="Remove">✕</button>
+        <button class="ms-x" data-action="ms-del-media" data-i="${i}" aria-label="${t('Remove')}">✕</button>
       </div>`
     )
     .join('')
@@ -1333,18 +1333,18 @@ async function addMsFiles(files) {
       continue
     }
     if (msMedia.length >= MAX_MEDIA) {
-      alert(`Up to ${MAX_MEDIA} photos per milestone.`)
+      alert(t('Up to {n} photos per milestone.', { n: MAX_MEDIA }))
       break
     }
-    msStatus(`Preparing ${k + 1} of ${list.length}…`)
+    msStatus(t('Preparing {k} of {n}…', { k: k + 1, n: list.length }))
     try {
       msMedia.push({ kind: 'photo', data: await downscalePhoto(f) })
       refreshMsGrid()
     } catch {
-      alert(`Could not read "${f.name}".`)
+      alert(t('Could not read "{name}".', { name: f.name }))
     }
   }
-  msStatus(skipped ? `${skipped} non-photo file${skipped > 1 ? 's' : ''} skipped — only photos can be added.` : '')
+  msStatus(skipped ? t('{files} skipped — only photos can be added.', { files: pl(skipped, 'file') }) : '')
 }
 // Shrink a picked photo to max 1280px JPEG so uploads stay small (<1 MB).
 function downscalePhoto(file) {
@@ -1381,7 +1381,7 @@ async function saveMilestone() {
     err.style.display = 'block'
   }
   const title = document.getElementById('ms-title').value.trim()
-  if (!title) return fail('Enter a title')
+  if (!title) return fail(t('Enter a title'))
   const text = document.getElementById('ms-text').value.trim()
   const ev = state.sheet.editId ? state.events.find((x) => x.id === state.sheet.editId) : null
   const at = readDateTime(ev ? ev.atISO : null)
@@ -1400,12 +1400,12 @@ async function saveMilestone() {
         continue
       }
       n++
-      msStatus(`Uploading ${n} of ${total}…`)
+      msStatus(t('Uploading {k} of {n}…', { k: n, n: total }))
       const r = await post('/photos', { data: m.data })
       uploaded.push({ kind: 'photo', id: r.id })
       media.push({ kind: 'photo', id: r.id })
     }
-    msStatus('Saving…')
+    msStatus(t('Saving…'))
     if (ev) await del('/events/' + ev.id)
     await post('/events', { babyId: state.activeBabyId, type: 'milestone', atISO: at.toISOString(), note: JSON.stringify({ title, text, media }) })
     await deleteMediaFiles(msRemoved)
@@ -1414,7 +1414,7 @@ async function saveMilestone() {
     msBusy = false
     if (saveBtn) saveBtn.disabled = false
     msStatus('')
-    return fail('Upload failed: ' + e.message)
+    return fail(t('Upload failed: {msg}', { msg: e.message }))
   }
   resetMsMedia(null)
   state.sheet = null
@@ -1432,24 +1432,24 @@ function babyFormFields(initial) {
   }
   const sex = initial ? initial.sex : 'girl'
   return `
-    ${field('Name', `<input id="bf-name" value="${initial ? esc(initial.name) : ''}" placeholder="Baby's name" autofocus>`)}
-    ${field('Sex (sets the theme)', `<div class="seg-pick" id="bf-sex">
-      <button data-sex="girl" class="${sex === 'girl' ? 'on' : ''}">Girl · pink</button>
-      <button data-sex="boy" class="${sex === 'boy' ? 'on' : ''}">Boy · blue</button></div>`)}
+    ${field(t('Name'), `<input id="bf-name" value="${initial ? esc(initial.name) : ''}" placeholder="${t("Baby's name")}" autofocus>`)}
+    ${field(t('Sex (sets the theme)'), `<div class="seg-pick" id="bf-sex">
+      <button data-sex="girl" class="${sex === 'girl' ? 'on' : ''}">${t('Girl · pink')}</button>
+      <button data-sex="boy" class="${sex === 'boy' ? 'on' : ''}">${t('Boy · blue')}</button></div>`)}
     <div class="row" style="gap:10px">
-      <div class="field" style="flex:1"><label>Date of birth</label><input id="bf-date" type="date" value="${date}"></div>
-      <div class="field" style="flex:1"><label>Time</label><input id="bf-time" type="time" value="${time}"></div>
+      <div class="field" style="flex:1"><label>${t('Date of birth')}</label><input id="bf-date" type="date" value="${date}"></div>
+      <div class="field" style="flex:1"><label>${t('Time')}</label><input id="bf-time" type="time" value="${time}"></div>
     </div>
     <p id="bf-err" style="color:var(--danger);font-size:13px;margin:0 0 10px;display:none"></p>
     <div class="sheet-actions">
-      ${initial || state.babies.length ? `<button class="btn ghost" data-action="close-babyform">Cancel</button>` : ''}
-      <button class="btn" data-action="save-baby">Save baby</button>
+      ${initial || state.babies.length ? `<button class="btn ghost" data-action="close-babyform">${t('Cancel')}</button>` : ''}
+      <button class="btn" data-action="save-baby">${t('Save baby')}</button>
     </div>`
 }
 function babyFormOverlay() {
   const initial = state.babyForm === 'edit' ? activeBaby() : null
   return `<div class="overlay" data-action="close-babyform"><div class="sheet" data-stop="1">
-    <h3>${initial ? 'Edit baby' : 'Add baby'}</h3>${babyFormFields(initial)}</div></div>`
+    <h3>${initial ? t('Edit baby') : t('Add baby')}</h3>${babyFormFields(initial)}</div></div>`
 }
 
 /* -------------------------------------------------------------- actions */
@@ -1457,7 +1457,7 @@ function readBabyForm() {
   const name = document.getElementById('bf-name').value.trim()
   const err = document.getElementById('bf-err')
   if (!name) {
-    err.textContent = 'Enter a name first'
+    err.textContent = t('Enter a name first')
     err.style.display = 'block'
     return null
   }
@@ -1466,7 +1466,7 @@ function readBabyForm() {
   const date = document.getElementById('bf-date').value
   const time = document.getElementById('bf-time').value
   if (!date || !time) {
-    err.textContent = 'Enter the date and time of birth'
+    err.textContent = t('Enter the date and time of birth')
     err.style.display = 'block'
     return null
   }
@@ -1475,7 +1475,7 @@ function readBabyForm() {
 }
 
 async function saveSheet() {
-  const t = state.sheet.type
+  const ty = state.sheet.type
   const ev = state.sheet.editId ? state.events.find((x) => x.id === state.sheet.editId) : null
   const err = document.getElementById('sheet-err')
   const fail = (m) => {
@@ -1486,40 +1486,40 @@ async function saveSheet() {
   const atISO = at.toISOString()
   const noteEl = document.getElementById('f-note')
   const note = noteEl ? noteEl.value.trim() : ''
-  const e = { babyId: state.activeBabyId, type: t, atISO }
+  const e = { babyId: state.activeBabyId, type: ty, atISO }
 
-  if (t === 'bottle') {
+  if (ty === 'bottle') {
     const v = num(document.getElementById('f-ml').value)
-    if (!v || v <= 0) return fail('Enter ml')
+    if (!v || v <= 0) return fail(t('Enter ml'))
     e.ml = v
-  } else if (t === 'temp') {
+  } else if (ty === 'temp') {
     const v = num(document.getElementById('f-temp').value)
-    if (!v) return fail('Enter temperature')
+    if (!v) return fail(t('Enter temperature'))
     e.celsius = v
-  } else if (t === 'weight') {
+  } else if (ty === 'weight') {
     const v = num(document.getElementById('f-weight').value)
-    if (!v || v <= 0) return fail('Enter weight')
+    if (!v || v <= 0) return fail(t('Enter weight'))
     e.grams = Math.round(v * 1000)
-  } else if (t === 'length') {
+  } else if (ty === 'length') {
     const v = num(document.getElementById('f-length').value)
-    if (!v || v <= 0) return fail('Enter length')
+    if (!v || v <= 0) return fail(t('Enter length'))
     e.note = String(v) // cm stored in note
-  } else if (t === 'breast') {
+  } else if (ty === 'breast') {
     e.side = (document.querySelector('#f-side .on') || {}).dataset?.side || 'both'
     const r = readDurationSec(at)
     if (r.err) return fail(r.err)
     e.durationSec = r.sec
-  } else if (t === 'sleep') {
+  } else if (ty === 'sleep') {
     e.side = (document.querySelector('#f-side .on') || {}).dataset?.side || 'back'
     const r = readDurationSec(at)
     if (r.err) return fail(r.err)
     e.durationSec = r.sec
     e.endISO = new Date(at.getTime() + e.durationSec * 1000).toISOString()
-  } else if (t === 'note') {
-    if (!note) return fail('Enter a note')
+  } else if (ty === 'note') {
+    if (!note) return fail(t('Enter a note'))
   }
-  if (note && t !== 'note' && t !== 'sleep') e.note = note
-  if (t === 'note') e.note = note
+  if (note && ty !== 'note' && ty !== 'sleep') e.note = note
+  if (ty === 'note') e.note = note
 
   // Edit = replace the old entry (uses existing create/delete endpoints).
   if (state.sheet.editId) await del('/events/' + state.sheet.editId)
@@ -1534,7 +1534,7 @@ function readDurationSec(startDate) {
   const uf = document.getElementById('until-field')
   if (uf && !uf.hidden) {
     const v = document.getElementById('f-until').value
-    if (!v) return { err: 'Enter the end time' }
+    if (!v) return { err: t('Enter the end time') }
     const [eh, em] = v.split(':').map(Number)
     const end = new Date(startDate)
     end.setHours(eh, em, 0, 0)
@@ -1542,7 +1542,7 @@ function readDurationSec(startDate) {
     return { sec: Math.round((end - startDate) / 1000) }
   }
   const mins = num(document.getElementById('f-min').value)
-  if (!mins || mins <= 0) return { err: 'Enter minutes' }
+  if (!mins || mins <= 0) return { err: t('Enter minutes') }
   return { sec: Math.round(mins * 60) }
 }
 
@@ -1550,7 +1550,7 @@ async function saveMed() {
   const err = document.getElementById('sheet-err')
   const name = document.getElementById('f-med').value
   if (!name) {
-    err.textContent = 'Pick a medicine'
+    err.textContent = t('Pick a medicine')
     err.style.display = 'block'
     return
   }
@@ -1568,7 +1568,7 @@ async function saveAddMed() {
   const err = document.getElementById('sheet-err')
   const name = document.getElementById('md-name').value.trim()
   if (!name) {
-    err.textContent = 'Enter a name'
+    err.textContent = t('Enter a name')
     err.style.display = 'block'
     return
   }
@@ -1692,14 +1692,14 @@ document.addEventListener('click', async (ev) => {
     }
     else if (a === 'del-event') await deleteEvent(el.dataset.id)
     else if (a === 'del-event-confirm') {
-      if (confirm('Delete this entry?')) {
+      if (confirm(t('Delete this entry?'))) {
         if (state.msDetail === el.dataset.id) state.msDetail = null
         await deleteEvent(el.dataset.id)
       }
     }
     else if (a === 'del-group') {
       const ids = el.dataset.ids.split(',')
-      const msg = ids.length > 1 ? `Delete these ${ids.length} entries?` : 'Delete this entry?'
+      const msg = ids.length > 1 ? t('Delete these {n}?', { n: pl(ids.length, 'entry') }) : t('Delete this entry?')
       if (confirm(msg)) {
         for (const id of ids) await del('/events/' + id)
         await refresh()
@@ -1729,9 +1729,10 @@ document.addEventListener('click', async (ev) => {
       await refresh()
     }
     else if (a === 'logout') window.location.href = '/logout'
+    else if (a === 'lang') { setLang(el.dataset.v); render() }
     else if (a === 'delete-baby') {
       const b = activeBaby()
-      if (confirm(`Delete ${b.name} and all their data? This cannot be undone.`)) {
+      if (confirm(t('Delete {name} and all their data? This cannot be undone.', { name: b.name }))) {
         await del('/babies/' + b.id)
         state.activeBabyId = null
         await refresh()
@@ -1739,7 +1740,7 @@ document.addEventListener('click', async (ev) => {
     }
   } catch (e) {
     console.error(e)
-    alert('Something went wrong: ' + e.message)
+    alert(t('Something went wrong: {msg}', { msg: e.message }))
   }
 })
 
@@ -1778,5 +1779,5 @@ setInterval(() => {
 /* boot */
 refresh().catch((e) => {
   console.error(e)
-  root().innerHTML = `<div class="center-screen"><p>Could not reach the server.</p></div>`
+  root().innerHTML = `<div class="center-screen"><p>${t('Could not reach the server.')}</p></div>`
 })
